@@ -12,8 +12,8 @@ The workspace is framed around **Meridian Metals BV**, a **mid-market importer**
 
 ## Six views
 
-1. **Dashboard** — accruing liability over time plus the *avoidable overpayment* (the gap between paying punitive defaults vs. verified actual emissions).
-2. **Comparison shelf** — ranks suppliers by carbon cost. Independent estimates are always shown as a **range + confidence label**, never a single hard number.
+1. **Dashboard** — the cost command centre: accruing liability over time, the *avoidable overpayment* (punitive defaults vs. verified actuals), and a **per-supplier breakdown** for any year you pick (one year selector drives both the curve and the ranking). Independent estimates always shown as a **range + confidence label**, never a single hard number.
+2. **Evidence** — the real measured Climate TRACE data on its own: measured emissions/production by year, CBAM-scope vs out-of-scope footprint, and an auditable facility provenance table (owner + LEI). The ground truth behind every estimate.
 3. **Facility map** — emissions intensity per facility alongside network/demand context.
 4. **Verification Priority Flag** — a **private triage signal** (visible only in the importer's own view) highlighting where a supplier's self-reported figure diverges from the independent estimate, so a small team knows where to spend its limited verification budget. It is *not* a public accusation. (See `docs/SPEC.md` for the full framing.)
 5. **Simulator & ledger** — what-if modelling of the payoff from supplier decarbonisation decisions; every supplier has its own slider and the impact ledger sums the lot.

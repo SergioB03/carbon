@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -9,10 +11,20 @@ import {
 } from 'recharts'
 import { SUPPLIERS, IMPORTER } from '../data/suppliers'
 import { CERT_PRICE_EUR } from '../data/cbam'
-import { forecast, forecastTotals, EUR, NUM } from '../lib/calc'
-import { flaggedSuppliers } from '../lib/flag'
-import { Card, SectionTitle, Stat, Pill } from '../components/ui'
+import { forecast, forecastTotals, supplierYearCost, EUR, NUM } from '../lib/calc'
+import { flaggedSuppliers, evaluateFlag } from '../lib/flag'
+import {
+  Card,
+  SectionTitle,
+  Stat,
+  Pill,
+  RangeBadge,
+  VerifyBadge,
+  FlagEmoji,
+} from '../components/ui'
 import ProvenanceCard from '../components/ProvenanceCard'
+
+const YEARS = [2026, 2027, 2030, 2034]
 
 const TIMELINE = [
   {
@@ -39,12 +51,21 @@ const TIMELINE = [
 ] as const
 
 export default function Dashboard() {
+  const [year, setYear] = useState(2030)
   const rows = forecast(SUPPLIERS)
   const { cumulativeAvoidable, firstPaymentYear, peak } = forecastTotals(rows)
   const y2026 = rows.find((r) => r.year === 2026)!
   const y2027 = rows.find((r) => r.year === 2027)!
   const totalTonnes = SUPPLIERS.reduce((a, s) => a + s.annualTonnesImported, 0)
   const flagged = flaggedSuppliers(SUPPLIERS)
+
+  // Per-supplier breakdown for the selected year — drives the ranking below
+  // and the reference marker on the curve, so both share one year context.
+  const ranked = [...SUPPLIERS]
+    .map((s) => ({ s, cost: supplierYearCost(s, year) }))
+    .sort((a, b) => b.cost.avoidable - a.cost.avoidable)
+  const maxCost = Math.max(...ranked.map((r) => r.cost.defaultCost), 1)
+  const yearAvoidable = ranked.reduce((a, r) => a + r.cost.avoidable, 0)
 
   return (
     <div className="space-y-6">
@@ -113,7 +134,22 @@ export default function Dashboard() {
       <Card>
         <SectionTitle
           title="Cost trajectory 2026–2034"
-          sub="The gap between punitive default values and verified actuals widens as free allocation phases out. The avoidable slice (green) is what verified supplier data kills."
+          sub="The gap between punitive default values and verified actuals widens as free allocation phases out. The avoidable slice (green) is what verified supplier data kills. Pick a year to break it down by supplier below."
+          right={
+            <div className="flex items-center gap-1 rounded-xl border border-edge bg-panel2 p-1">
+              {YEARS.map((y) => (
+                <button
+                  key={y}
+                  onClick={() => setYear(y)}
+                  className={`rounded-lg px-3 py-1 text-sm transition ${
+                    y === year ? 'bg-brand/15 text-brand' : 'text-mute hover:text-text'
+                  }`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          }
         />
         <div className="h-[320px] w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -129,6 +165,13 @@ export default function Dashboard() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#243049" vertical={false} />
+              <ReferenceLine
+                x={year}
+                stroke="#e6ecf7"
+                strokeOpacity={0.5}
+                strokeDasharray="4 3"
+                label={{ value: `${year}`, fill: '#e6ecf7', fontSize: 11, position: 'top' }}
+              />
               <XAxis dataKey="year" stroke="#7d8aa5" tickLine={false} axisLine={false} />
               <YAxis
                 stroke="#7d8aa5"
@@ -184,6 +227,71 @@ export default function Dashboard() {
             Peak avoidable (2034): <span className="text-brand">{EUR(peak.avoidable)}</span>
             /yr · first payment {firstPaymentYear}
           </span>
+        </div>
+      </Card>
+
+      {/* Per-supplier breakdown for the selected year (folds in the old shelf) */}
+      <Card className="!p-0">
+        <div className="px-5 pt-5">
+          <SectionTitle
+            title={`Where the cost concentrates — by supplier (${year})`}
+            sub="Each bar splits the unavoidable verified cost (green) from the avoidable overpayment on default values (red). Independent estimates shown as a range + confidence — never a single hard number."
+            right={
+              <div className="shrink-0 text-right">
+                <div className="text-[11px] text-mute">avoidable in {year}</div>
+                <div className="stat-num text-xl font-semibold text-brand">{EUR(yearAvoidable)}</div>
+              </div>
+            }
+          />
+        </div>
+        <div className="divide-y divide-edge border-t border-edge">
+          {ranked.map(({ s, cost }, i) => {
+            const flag = evaluateFlag(s)
+            const verifiedPct = (cost.verifiedCost / maxCost) * 100
+            const avoidablePct = (cost.avoidable / maxCost) * 100
+            return (
+              <div key={s.id} className="grid grid-cols-12 items-center gap-4 px-5 py-3.5">
+                <div className="col-span-12 lg:col-span-4">
+                  <div className="flex items-center gap-2">
+                    <span className="stat-num w-6 text-sm text-mute">#{i + 1}</span>
+                    <FlagEmoji code={s.countryCode} />
+                    <span className="truncate font-medium text-text">{s.name}</span>
+                    {flag.flagged && (
+                      <VerifyBadge severity={flag.severity === 'priority' ? 'priority' : 'watch'} />
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-8">
+                    <Pill>{s.commodity}</Pill>
+                    {s.productionRoute !== 'n/a' && <Pill>{s.productionRoute}</Pill>}
+                    {s.inSharedPool && <Pill tone="pool">◇ pool</Pill>}
+                  </div>
+                </div>
+                <div className="col-span-12 lg:col-span-5">
+                  <div className="flex h-6 w-full overflow-hidden rounded-lg bg-panel2">
+                    <div
+                      className="h-full bg-brand/60"
+                      style={{ width: `${verifiedPct}%` }}
+                      title={`Verified cost ${EUR(cost.verifiedCost)}`}
+                    />
+                    <div
+                      className="h-full bg-danger/55"
+                      style={{ width: `${avoidablePct}%` }}
+                      title={`Avoidable overpayment ${EUR(cost.avoidable)}`}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[11px] text-mute">
+                    <span>verified <span className="text-brand">{EUR(cost.verifiedCost)}</span></span>
+                    <span>avoidable <span className="text-danger">{EUR(cost.avoidable)}</span></span>
+                  </div>
+                </div>
+                <div className="col-span-12 lg:col-span-3 lg:text-right">
+                  <div className="lg:flex lg:justify-end">
+                    <RangeBadge range={s.independentEstimate} confidence={s.estimateConfidence} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </Card>
 
