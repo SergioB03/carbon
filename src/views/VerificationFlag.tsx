@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { SUPPLIERS } from '../data/suppliers'
 import { evaluateFlag, midpoint, DIVERGENCE_THRESHOLD } from '../lib/flag'
 import { NUM } from '../lib/calc'
+import { productFor } from '../data/products'
+import { useAppState } from '../state/appState'
 import type { Supplier } from '../types'
 import {
   Card,
@@ -61,24 +63,18 @@ function DivergenceBar({ s, threshold }: { s: Supplier; threshold: number }) {
 
 export default function VerificationFlag() {
   const [threshold, setThreshold] = useState(DIVERGENCE_THRESHOLD)
-  const [requested, setRequested] = useState<Set<string>>(new Set())
+  const { mode, statusOf, requestVerification, resetVerification } = useAppState()
 
-  const buckets = useMemo(() => {
-    const evaluated = SUPPLIERS.map((s) => ({ s, flag: evaluateFlag(s, threshold) }))
-    return {
-      priority: evaluated.filter((e) => e.flag.flagged && !requested.has(e.s.id)),
-      consistent: evaluated.filter((e) => !e.flag.flagged && e.s.estimateConfidence !== 'low'),
-      cantAssess: evaluated.filter((e) => !e.flag.flagged && e.s.estimateConfidence === 'low'),
-    }
-  }, [threshold, requested])
-
-  const totalFlaggable = useMemo(
-    () => SUPPLIERS.filter((s) => evaluateFlag(s, threshold).flagged).length,
-    [threshold],
-  )
-
-  const request = (id: string) => setRequested((p) => new Set(p).add(id))
-  const reset = () => setRequested(new Set())
+  const evaluated = SUPPLIERS.map((s) => ({ s, flag: evaluateFlag(s, threshold) }))
+  const buckets = {
+    priority: evaluated.filter((e) => e.flag.flagged && statusOf(e.s.id) === 'none'),
+    consistent: evaluated.filter((e) => !e.flag.flagged && e.s.estimateConfidence !== 'low'),
+    cantAssess: evaluated.filter((e) => !e.flag.flagged && e.s.estimateConfidence === 'low'),
+  }
+  const totalFlaggable = SUPPLIERS.filter((s) => evaluateFlag(s, threshold).flagged).length
+  const requestedList = SUPPLIERS.filter((s) => statusOf(s.id) !== 'none')
+  const request = (id: string) => requestVerification(id)
+  const reset = () => resetVerification()
 
   return (
     <div className="space-y-6">
@@ -94,12 +90,14 @@ export default function VerificationFlag() {
           <Pill tone="warn">🔒 Private — importer view only</Pill>
           <span>Triage signal, not an accusation</span>
         </div>
-        <p className="mt-2 max-w-3xl text-sm text-mute">
-          We flag where a supplier's self-reported number{' '}
-          <span className="text-text">diverges below an independent estimate</span> by more than your
-          chosen threshold — and only when the estimate is confident enough. The estimate is always a{' '}
-          <span className="text-text">range + confidence</span>, never a single hard number.
-        </p>
+        {mode === 'pitch' && (
+          <p className="mt-2 max-w-3xl text-sm text-mute">
+            We flag where a supplier's self-reported number{' '}
+            <span className="text-text">diverges below an independent estimate</span> by more than your
+            chosen threshold — and only when the estimate is confident enough. The estimate is always a{' '}
+            <span className="text-text">range + confidence</span>, never a single hard number.
+          </p>
+        )}
       </div>
 
       {/* Interactive control bar */}
@@ -128,7 +126,7 @@ export default function VerificationFlag() {
           </div>
           <div className="flex gap-3">
             <Metric label="To verify" value={buckets.priority.length} tone="warn" />
-            <Metric label="Requested" value={requested.size} tone="good" />
+            <Metric label="Requested" value={requestedList.length} tone="good" />
             <Metric label="Consistent" value={buckets.consistent.length} tone="default" />
             <Metric label="Can't assess" value={buckets.cantAssess.length} tone="default" />
           </div>
@@ -141,7 +139,7 @@ export default function VerificationFlag() {
           <h3 className="text-sm font-semibold uppercase tracking-wide text-warn">
             ⚑ Recommend verification ({buckets.priority.length})
           </h3>
-          {requested.size > 0 && (
+          {requestedList.length > 0 && (
             <button onClick={reset} className="text-xs text-mute hover:text-text">
               ↺ reset queue
             </button>
@@ -151,7 +149,7 @@ export default function VerificationFlag() {
         {buckets.priority.length === 0 ? (
           <Card>
             <p className="text-sm text-mute">
-              {totalFlaggable === 0 && requested.size === 0
+              {totalFlaggable === 0 && requestedList.length === 0
                 ? 'Nothing exceeds the threshold — lower the sensitivity to surface borderline suppliers.'
                 : 'Queue cleared 🎉 — every flagged supplier has a verification request out.'}
             </p>
@@ -174,7 +172,7 @@ export default function VerificationFlag() {
                 </div>
 
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Pill>{s.commodity}</Pill>
+                  <Pill title={`CN ${productFor(s.cnCode).cn}`}>{productFor(s.cnCode).name}</Pill>
                   {s.productionRoute !== 'n/a' && <Pill>{s.productionRoute}</Pill>}
                   <Pill title="Entity-resolution confidence">match: {s.matchConfidence}</Pill>
                   <Pill tone="warn">diverges −{Math.round(flag.divergence * 100)}%</Pill>
@@ -200,19 +198,21 @@ export default function VerificationFlag() {
       </div>
 
       {/* Requested (resolved) */}
-      {requested.size > 0 && (
+      {requestedList.length > 0 && (
         <Card className="border-brand/30">
           <h3 className="mb-3 text-sm font-semibold text-brand">
-            ✓ Verification requested ({requested.size})
+            ✓ Verification requested ({requestedList.length})
           </h3>
           <ul className="space-y-2">
-            {SUPPLIERS.filter((s) => requested.has(s.id)).map((s) => (
+            {requestedList.map((s) => (
               <li key={s.id} className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2">
                   <FlagEmoji code={s.countryCode} />
                   <span className="text-text">{s.name}</span>
                 </span>
-                <Pill tone="good">request sent · awaiting verified data</Pill>
+                <Pill tone={statusOf(s.id) === 'received' ? 'good' : 'accent'}>
+                  {statusOf(s.id) === 'received' ? 'verified data received' : 'request sent · awaiting'}
+                </Pill>
               </li>
             ))}
           </ul>

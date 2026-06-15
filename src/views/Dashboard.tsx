@@ -13,6 +13,8 @@ import { SUPPLIERS, IMPORTER } from '../data/suppliers'
 import { CERT_PRICE_EUR } from '../data/cbam'
 import { forecast, forecastTotals, supplierYearCost, EUR, NUM } from '../lib/calc'
 import { flaggedSuppliers, evaluateFlag } from '../lib/flag'
+import { productFor } from '../data/products'
+import { useMode } from '../state/appState'
 import {
   Card,
   SectionTitle,
@@ -51,6 +53,7 @@ const TIMELINE = [
 ] as const
 
 export default function Dashboard() {
+  const mode = useMode()
   const [year, setYear] = useState(2030)
   const rows = forecast(SUPPLIERS)
   const { cumulativeAvoidable, firstPaymentYear, peak } = forecastTotals(rows)
@@ -261,7 +264,7 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-8">
-                    <Pill>{s.commodity}</Pill>
+                    <Pill title={`CN ${productFor(s.cnCode).cn}`}>{productFor(s.cnCode).name}</Pill>
                     {s.productionRoute !== 'n/a' && <Pill>{s.productionRoute}</Pill>}
                     {s.inSharedPool && <Pill tone="pool">◇ pool</Pill>}
                   </div>
@@ -298,14 +301,16 @@ export default function Dashboard() {
       {/* Blended real-history → projection (the defensible "past + present") */}
       <ProvenanceCard />
 
-      <p className="text-xs text-mute">
-        Independent estimates, facilities, owners and routes are <span className="text-text">real</span>{' '}
-        (Climate TRACE, CC BY 4.0). Self-reported figures are illustrative supplier
-        claims; CBAM default values and mark-ups follow Reg. (EU) 2025/2621, and the
-        cert price is the Commission's quarterly average modelled as a fixed rate.
-        Free allocation is modelled via the CBAM phase-in factor (not a separate
-        benchmark deduction) to avoid double-counting.
-      </p>
+      {mode === 'pitch' && (
+        <p className="text-xs text-mute">
+          Independent estimates, facilities, owners and routes are <span className="text-text">real</span>{' '}
+          (Climate TRACE, CC BY 4.0). Self-reported figures are illustrative supplier
+          claims; CBAM default values and mark-ups follow Reg. (EU) 2025/2621, and the
+          cert price is the Commission's quarterly average modelled as a fixed rate.
+          Free allocation is modelled via the CBAM phase-in factor (not a separate
+          benchmark deduction) to avoid double-counting.
+        </p>
+      )}
     </div>
   )
 }

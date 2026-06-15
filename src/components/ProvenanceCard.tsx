@@ -12,6 +12,7 @@ import {
 import { SUPPLIERS } from '../data/suppliers'
 import { HISTORY, facilityFor } from '../lib/history'
 import { NUM } from '../lib/calc'
+import { useMode } from '../state/appState'
 import { Card, SectionTitle, Pill, ConfidenceChip, FlagEmoji } from './ui'
 
 const PROJ_END = 2034
@@ -52,6 +53,7 @@ function buildSeries(histId: number, confBand: number) {
 }
 
 export default function ProvenanceCard() {
+  const mode = useMode()
   const [supId, setSupId] = useState(SUPPLIERS.find((s) => s.commodity === 'aluminium')?.id ?? SUPPLIERS[0].id)
   const sup = SUPPLIERS.find((s) => s.id === supId)!
   const fac = facilityFor(sup.historyId!)!
@@ -162,10 +164,9 @@ export default function ProvenanceCard() {
       </div>
 
       <p className="mt-3 text-[11px] text-mute">
-        {HISTORY.source} · {HISTORY.release}. Climate TRACE figures are modelled
-        satellite + ML estimates, not audited installation reports — a triage
-        baseline, not a compliance number. Forward line is held constant (no
-        decarbonisation assumed); the simulator lets you change it.
+        {HISTORY.source} · {HISTORY.release}.
+        {mode === 'pitch' &&
+          ' Climate TRACE figures are modelled satellite + ML estimates, not audited installation reports — a triage baseline, not a compliance number. Forward line is held constant (no decarbonisation assumed); the simulator lets you change it.'}
       </p>
     </Card>
   )

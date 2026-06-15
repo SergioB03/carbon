@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { HISTORY } from '../lib/history'
 import { NUM } from '../lib/calc'
+import { useMode } from '../state/appState'
 import { Card, SectionTitle, Stat, Pill, ConfidenceChip } from '../components/ui'
 
 const FULL_YEARS = [2021, 2022, 2023, 2024, 2025]
@@ -30,6 +31,7 @@ const short = (n: string) =>
 
 export default function Evidence() {
   const [metric, setMetric] = useState<'emissions' | 'production'>('emissions')
+  const mode = useMode()
 
   // Chart 1: real measured emissions/production by year, stacked by commodity.
   const byYear = FULL_YEARS.map((y) => {
@@ -79,15 +81,17 @@ export default function Evidence() {
         <Stat label="Cumulative 21–25" value={`${NUM(cumulative / 1e6, 0)} Mt`} sub="real observed total" tone="danger" />
       </div>
 
-      {/* Why it matters NOW */}
-      <div className="card border-l-4 border-l-brand p-4">
-        <div className="text-sm font-semibold text-text">Why this matters right now (no prediction needed)</div>
-        <ul className="mt-2 grid gap-1.5 text-sm text-mute sm:grid-cols-3">
-          <li>→ It sets each supplier's <span className="text-text">independent estimate range + confidence</span> — measured, not invented.</li>
-          <li>→ It's the baseline the <span className="text-text">Verification Priority</span> flag diverges from.</li>
-          <li>→ It anchors the <span className="text-text">cost</span> — real intensity × the legislated CBAM schedule.</li>
-        </ul>
-      </div>
+      {/* Why it matters NOW — pitch/judge framing */}
+      {mode === 'pitch' && (
+        <div className="card border-l-4 border-l-brand p-4">
+          <div className="text-sm font-semibold text-text">Why this matters right now (no prediction needed)</div>
+          <ul className="mt-2 grid gap-1.5 text-sm text-mute sm:grid-cols-3">
+            <li>→ It sets each supplier's <span className="text-text">independent estimate range + confidence</span> — measured, not invented.</li>
+            <li>→ It's the baseline the <span className="text-text">Verification Priority</span> flag diverges from.</li>
+            <li>→ It anchors the <span className="text-text">cost</span> — real intensity × the legislated CBAM schedule.</li>
+          </ul>
+        </div>
+      )}
 
       {/* Chart 1 — real measured volume over time */}
       <Card>

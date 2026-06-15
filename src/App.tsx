@@ -1,5 +1,7 @@
-import { useState } from 'react'
 import { IMPORTER } from './data/suppliers'
+import { useAppState } from './state/appState'
+import Home from './views/Home'
+import Suppliers from './views/Suppliers'
 import Dashboard from './views/Dashboard'
 import Evidence from './views/Evidence'
 import FacilityMap from './views/FacilityMap'
@@ -8,29 +10,31 @@ import Simulator from './views/Simulator'
 import LiveData from './views/LiveData'
 import Copilot from './components/Copilot'
 
-type ViewId = 'dashboard' | 'evidence' | 'map' | 'verify' | 'simulator' | 'live'
-
-const NAV: { id: ViewId; label: string; icon: string; hint: string }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: '▦', hint: 'Accruing liability & avoidable overpayment' },
-  { id: 'evidence', label: 'Evidence', icon: '▤', hint: 'Real measured Climate TRACE data' },
-  { id: 'map', label: 'Facility map', icon: '◎', hint: 'Emissions intensity & network demand' },
-  { id: 'verify', label: 'Verification priority', icon: '⚑', hint: 'Private triage — where to verify first' },
+const NAV: { id: string; label: string; icon: string; hint: string }[] = [
+  { id: 'home', label: 'Home', icon: '⌂', hint: 'Obligations, exposure & to-dos' },
+  { id: 'suppliers', label: 'Suppliers', icon: '◷', hint: 'Verification status & requests' },
+  { id: 'dashboard', label: 'Cost & forecast', icon: '▦', hint: 'Liability & avoidable overpayment' },
+  { id: 'verify', label: 'Verification priority', icon: '⚑', hint: 'Where to verify first' },
   { id: 'simulator', label: 'Simulator & ledger', icon: '∿', hint: 'What-if decarbonisation payoff' },
+  { id: 'evidence', label: 'Evidence', icon: '▤', hint: 'Real measured Climate TRACE data' },
+  { id: 'map', label: 'Facility map', icon: '◎', hint: 'Emissions intensity & demand' },
   { id: 'live', label: 'Live data', icon: '◉', hint: 'Real grid + company-ID feeds' },
 ]
 
-const VIEWS: Record<ViewId, () => JSX.Element> = {
+const VIEWS: Record<string, () => JSX.Element> = {
+  home: Home,
+  suppliers: Suppliers,
   dashboard: Dashboard,
-  evidence: Evidence,
-  map: FacilityMap,
   verify: VerificationFlag,
   simulator: Simulator,
+  evidence: Evidence,
+  map: FacilityMap,
   live: LiveData,
 }
 
 export default function App() {
-  const [view, setView] = useState<ViewId>('dashboard')
-  const Active = VIEWS[view]
+  const { view, setView, mode, setMode } = useAppState()
+  const Active = VIEWS[view] ?? Home
 
   return (
     <div className="flex min-h-screen">
@@ -42,11 +46,11 @@ export default function App() {
           </div>
           <div>
             <div className="text-sm font-semibold leading-tight">CarbonBridge</div>
-            <div className="text-[11px] text-mute">CBAM verification POC</div>
+            <div className="text-[11px] text-mute">CBAM workspace</div>
           </div>
         </div>
 
-        <nav className="mt-2 flex-1 space-y-1 px-3">
+        <nav className="mt-1 flex-1 space-y-1 overflow-y-auto px-3">
           {NAV.map((n) => {
             const active = n.id === view
             return (
@@ -59,27 +63,39 @@ export default function App() {
                     : 'text-mute hover:bg-panel2 hover:text-text'
                 }`}
               >
-                <span className={`mt-0.5 text-base ${active ? 'text-brand' : ''}`}>
-                  {n.icon}
-                </span>
+                <span className={`mt-0.5 text-base ${active ? 'text-brand' : ''}`}>{n.icon}</span>
                 <span>
                   <span className="block text-sm font-medium">{n.label}</span>
-                  <span className="block text-[11px] leading-tight text-mute">
-                    {n.hint}
-                  </span>
+                  <span className="block text-[11px] leading-tight text-mute">{n.hint}</span>
                 </span>
               </button>
             )
           })}
         </nav>
 
-        <div className="border-t border-edge px-5 py-4 text-[11px] text-mute">
+        {/* View-mode toggle */}
+        <div className="px-3 pb-2 pt-2">
+          <div className="flex rounded-xl border border-edge bg-panel2 p-1 text-xs">
+            {(['operator', 'pitch'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`flex-1 rounded-lg px-2 py-1.5 font-medium capitalize transition ${
+                  mode === m ? 'bg-brand/15 text-brand' : 'text-mute hover:text-text'
+                }`}
+              >
+                {m === 'pitch' ? 'Pitch / judge' : 'Operator'}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1 px-1 text-[10px] text-mute">
+            {mode === 'operator' ? 'Clean importer view' : 'Shows methodology, sources & framing'}
+          </div>
+        </div>
+
+        <div className="border-t border-edge px-5 py-3 text-[11px] text-mute">
           <div className="font-medium text-text">{IMPORTER.name}</div>
           <div>{IMPORTER.country} · EORI {IMPORTER.eori}</div>
-          <div className="mt-2 rounded-lg bg-panel2 px-2 py-1.5">
-            Mock data · POC. Estimates shown as ranges + confidence. The Live
-            data tab uses real public feeds.
-          </div>
         </div>
       </aside>
 
