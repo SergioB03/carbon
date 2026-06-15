@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+npm-debug.log*
+yarn-error.log*
+
+# local-only / private docs (never push to the public repo)
+docs/INTERNAL_PITCH_NOTES.md
+
+# tsc build artifacts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
