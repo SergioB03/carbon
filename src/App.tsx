@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { IMPORTER } from './data/suppliers'
 import Dashboard from './views/Dashboard'
+import Evidence from './views/Evidence'
 import ComparisonShelf from './views/ComparisonShelf'
 import FacilityMap from './views/FacilityMap'
 import VerificationFlag from './views/VerificationFlag'
@@ -8,10 +9,11 @@ import Simulator from './views/Simulator'
 import LiveData from './views/LiveData'
 import Copilot from './components/Copilot'
 
-type ViewId = 'dashboard' | 'shelf' | 'map' | 'verify' | 'simulator' | 'live'
+type ViewId = 'dashboard' | 'evidence' | 'shelf' | 'map' | 'verify' | 'simulator' | 'live'
 
 const NAV: { id: ViewId; label: string; icon: string; hint: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '▦', hint: 'Accruing liability & avoidable overpayment' },
+  { id: 'evidence', label: 'Evidence', icon: '▤', hint: 'Real measured Climate TRACE data' },
   { id: 'shelf', label: 'Comparison shelf', icon: '⋮⋮', hint: 'Rank suppliers by carbon cost' },
   { id: 'map', label: 'Facility map', icon: '◎', hint: 'Emissions intensity & network demand' },
   { id: 'verify', label: 'Verification priority', icon: '⚑', hint: 'Private triage — where to verify first' },
@@ -21,6 +23,7 @@ const NAV: { id: ViewId; label: string; icon: string; hint: string }[] = [
 
 const VIEWS: Record<ViewId, () => JSX.Element> = {
   dashboard: Dashboard,
+  evidence: Evidence,
   shelf: ComparisonShelf,
   map: FacilityMap,
   verify: VerificationFlag,
