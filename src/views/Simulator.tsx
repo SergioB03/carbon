@@ -9,7 +9,7 @@ import {
   NUM,
 } from '../lib/calc'
 import { scaleLinear } from 'd3-scale'
-import { Card, SectionTitle, Pill, RangeBadge, FlagEmoji } from '../components/ui'
+import { Card, SectionTitle, Pill, FlagEmoji } from '../components/ui'
 
 const SIM_YEAR = 2030
 
@@ -75,11 +75,11 @@ export default function Simulator() {
   }, [overrides])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <SectionTitle
         kicker="Green-payoff simulator"
         title="What if your suppliers decarbonised?"
-        sub="Every supplier has its own what-if slider, starting from its sourced independent estimate. Drag any of them down and the aggregate ledger, each company's payoff, and the live shelf all update."
+        sub="Drag any supplier's slider on the left — the ledger and live shelf on the right update in tandem, no scrolling."
         right={
           <button
             onClick={resetAll}
@@ -90,142 +90,96 @@ export default function Simulator() {
         }
       />
 
-      {/* Aggregate impact ledger — sums every slider */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-panel to-panel2">
-          <div className="text-xs text-mute">CBAM saved in {SIM_YEAR}</div>
-          <div className="stat-num mt-1 text-2xl font-bold text-brand">
-            {EUR(Math.max(0, agg.yearSaved))}
-          </div>
-        </Card>
-        <Card className="bg-gradient-to-br from-panel to-panel2">
-          <div className="text-xs text-mute">Cumulative 2026–2034</div>
-          <div className="stat-num mt-1 text-2xl font-bold text-brand">
-            {EUR(Math.max(0, agg.cumSaved))}
-          </div>
-        </Card>
-        <Card className="bg-gradient-to-br from-panel to-panel2">
-          <div className="text-xs text-mute">CO₂ cut / yr</div>
-          <div className="stat-num mt-1 text-2xl font-bold text-accent">
-            {NUM(Math.max(0, agg.co2Cut))} t
-          </div>
-        </Card>
-        <Card className="bg-gradient-to-br from-panel to-panel2">
-          <div className="text-xs text-mute">Suppliers improved</div>
-          <div className="stat-num mt-1 text-2xl font-bold text-text">
-            {agg.improved}
-            <span className="text-sm text-mute"> / {SUPPLIERS.length}</span>
-          </div>
-        </Card>
-      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        {/* LEFT — compact slider per supplier */}
+        <div className="space-y-3 lg:col-span-5">
+          {SUPPLIERS.map((s) => {
+            const baseline = BASELINE[s.id]
+            const cur = overrides[s.id]
+            const floor = +s.benchmark.toFixed(2)
+            const ceil = +s.independentEstimate.high.toFixed(2)
+            const improved = cur < baseline - 1e-9
+            const pctCut = Math.round(((baseline - cur) / baseline) * 100)
+            const yearSaved =
+              supplierYearCost(s, SIM_YEAR).verifiedCost -
+              supplierYearCost(s, SIM_YEAR, cur).verifiedCost
 
-      {/* One interactive card per supplier */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {SUPPLIERS.map((s, i) => {
-          const baseline = BASELINE[s.id]
-          const cur = overrides[s.id]
-          const floor = +s.benchmark.toFixed(2)
-          const ceil = +s.independentEstimate.high.toFixed(2)
-          const improved = cur < baseline - 1e-9
-          const pctCut = Math.round(((baseline - cur) / baseline) * 100)
-          const yearSaved =
-            supplierYearCost(s, SIM_YEAR).verifiedCost -
-            supplierYearCost(s, SIM_YEAR, cur).verifiedCost
-          const co2 = (baseline - cur) * s.annualTonnesImported
-
-          return (
-            <Card key={s.id}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="stat-num text-xs text-mute">#{i + 1}</span>
+            return (
+              <Card key={s.id} className="!p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     <FlagEmoji code={s.countryCode} />
-                    <span className="truncate font-semibold text-text">{s.name}</span>
+                    <span className="truncate text-sm font-semibold text-text">{s.name}</span>
+                    {s.inSharedPool && <Pill tone="pool">◇</Pill>}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Pill>{s.commodity}</Pill>
-                    {s.productionRoute !== 'n/a' && <Pill>{s.productionRoute}</Pill>}
-                    {s.inSharedPool && <Pill tone="pool">◇ pool</Pill>}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-[11px] text-mute">shelf rank</div>
-                  <div className="stat-num text-lg font-semibold text-text">
-                    #{agg.rankOf[s.id]}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-2 text-[11px] text-mute">
-                sourced baseline{' '}
-                <RangeBadge range={s.independentEstimate} confidence={s.estimateConfidence} />
-              </div>
-
-              {/* The slider */}
-              <div className="mt-4">
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-xs text-mute">Emissions intensity (what-if)</span>
-                  <span className="stat-num text-xl font-semibold text-brand">
-                    {NUM(cur, 2)} <span className="text-xs text-mute">tCO₂/t</span>
+                  <span className="shrink-0 text-[11px] text-mute">
+                    rank <span className="stat-num text-sm font-semibold text-text">#{agg.rankOf[s.id]}</span>
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={floor}
-                  max={ceil}
-                  step={0.01}
-                  value={cur}
-                  onChange={(e) => setOne(s.id, +e.target.value)}
-                  className="w-full accent-brand"
-                />
-                <div className="flex justify-between text-[10px] text-mute">
-                  <span>benchmark {NUM(floor, 2)}</span>
-                  <span>est. high {NUM(ceil, 2)}</span>
-                </div>
-              </div>
 
-              {/* Per-company payoff */}
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-edge pt-3 text-center">
-                <div>
-                  <div className="text-[10px] text-mute">vs baseline</div>
+                <div className="mt-2.5 flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={floor}
+                    max={ceil}
+                    step={0.01}
+                    value={cur}
+                    onChange={(e) => setOne(s.id, +e.target.value)}
+                    className="min-w-0 flex-1 accent-brand"
+                  />
+                  <span className="stat-num w-24 shrink-0 text-right text-base font-semibold text-brand">
+                    {NUM(cur, 2)}
+                    <span className="text-[10px] font-normal text-mute"> tCO₂/t</span>
+                  </span>
+                </div>
+
+                <div className="mt-1 flex items-center justify-between text-[10px] text-mute">
+                  <span>
+                    {s.commodity}
+                    {s.productionRoute !== 'n/a' ? ` · ${s.productionRoute}` : ''} · bench {NUM(floor, 2)}
+                  </span>
                   {improved ? (
-                    <div className="stat-num text-sm font-semibold text-brand">↓ {pctCut}%</div>
+                    <span className="text-brand">
+                      ↓{pctCut}% · {EUR(Math.max(0, yearSaved))} saved
+                    </span>
                   ) : (
-                    <div className="text-sm text-mute">—</div>
+                    <span>at sourced baseline</span>
                   )}
                 </div>
-                <div>
-                  <div className="text-[10px] text-mute">saved {SIM_YEAR}</div>
-                  <div className="stat-num text-sm font-semibold text-brand">
-                    {EUR(Math.max(0, yearSaved))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-mute">CO₂ cut/yr</div>
-                  <div className="stat-num text-sm font-semibold text-accent">
-                    {NUM(Math.max(0, co2))} t
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
+              </Card>
+            )
+          })}
+        </div>
 
-      {/* Live shelf — reflects every override */}
-      <Card>
-        <SectionTitle
-          title="Live shelf — lower carbon cost per tonne ranks higher"
-          sub={`Bar length = carbon cost per tonne in ${SIM_YEAR}; colour = intensity vs the commodity benchmark (green = clean, red = dirty). Drag any slider and watch a supplier shrink, green-up, and climb past its faded start position (◁).`}
-          right={
-            <div className="flex items-center gap-2 text-[11px] text-mute">
-              <span className="inline-block h-2 w-12 rounded-sm" style={{ background: 'linear-gradient(90deg,#34d399,#f59e0b,#f87171)' }} />
-              <span>clean → dirty</span>
+        {/* RIGHT — sticky ledger + live shelf, always in view */}
+        <div className="lg:col-span-7">
+          <div className="space-y-4 lg:sticky lg:top-6">
+            {/* Aggregate impact ledger */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <LedgerStat label={`Saved ${SIM_YEAR}`} value={EUR(Math.max(0, agg.yearSaved))} tone="brand" />
+              <LedgerStat label="Cumul. 26–34" value={EUR(Math.max(0, agg.cumSaved))} tone="brand" />
+              <LedgerStat label="CO₂ cut/yr" value={`${NUM(Math.max(0, agg.co2Cut))} t`} tone="accent" />
+              <LedgerStat
+                label="Improved"
+                value={`${agg.improved}/${SUPPLIERS.length}`}
+                tone="text"
+              />
             </div>
-          }
-        />
-        <div className="space-y-1">
-          {agg.ranked.map(({ s, perTonne }, i) => {
+
+            {/* Live shelf */}
+            <Card>
+              <SectionTitle
+                title="Live shelf — lower carbon cost per tonne ranks higher"
+                sub="Bar = carbon cost/tonne; colour = intensity vs benchmark (green→red). Drag a slider and watch a supplier shrink, green-up, and climb past its start mark (◁)."
+                right={
+                  <div className="flex items-center gap-2 text-[11px] text-mute">
+                    <span className="inline-block h-2 w-12 rounded-sm" style={{ background: 'linear-gradient(90deg,#34d399,#f59e0b,#f87171)' }} />
+                    <span>clean → dirty</span>
+                  </div>
+                }
+              />
+              <div className="space-y-1">
+                {agg.ranked.map(({ s, perTonne }, i) => {
             const moved = overrides[s.id] < BASELINE[s.id] - 1e-9
             const max = Math.max(...Object.values(BASELINE_PER_TONNE)) || 1
             const delta = BASELINE_RANK[s.id] - (i + 1) // >0 = climbed up
@@ -284,13 +238,34 @@ export default function Simulator() {
             <span className="text-brand">▲</span> places climbed since baseline
           </span>
         </div>
-      </Card>
+            </Card>
+          </div>
+        </div>
+      </div>
 
       <p className="text-xs text-mute">
         Each slider is a what-if; its starting point is that supplier's sourced
-        independent estimate. CBAM factor and cert price per{' '}
-        <code className="text-mute">src/data/cbam.ts</code>.
+        independent estimate (real Climate TRACE intensity). CBAM factor and cert
+        price per <code className="text-mute">src/data/cbam.ts</code>.
       </p>
+    </div>
+  )
+}
+
+function LedgerStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'brand' | 'accent' | 'text'
+}) {
+  const c = { brand: 'text-brand', accent: 'text-accent', text: 'text-text' }[tone]
+  return (
+    <div className="card bg-gradient-to-br from-panel to-panel2 p-3">
+      <div className="text-[11px] text-mute">{label}</div>
+      <div className={`stat-num mt-0.5 text-lg font-bold ${c}`}>{value}</div>
     </div>
   )
 }
