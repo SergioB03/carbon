@@ -47,17 +47,17 @@ const OVERLAY: Record<string, Overlay> = {
     annualTonnesImported: 2600, inSharedPool: true, matchConfidence: 'high',
     matchBasis: 'country + CN code + named installation (verified in pool)',
   },
-  '1566610': { // Angang (CHN, BF/BOF) — under-reports vs real → flagged
+  '1566610': { // Angang (CHN, BF/BOF) — strong under-report vs real → priority flag
     commodity: 'steel', cnCode: '72071100', route: 'BF-BOF',
-    selfReported: 1.42, countryDefaultValue: 3.167, benchmark: 1.37,
+    selfReported: 1.25, countryDefaultValue: 3.167, benchmark: 1.37,
     annualTonnesImported: 4200, inSharedPool: false, matchConfidence: 'medium',
     matchBasis: 'country + CN code; named installation unconfirmed (trader-fronted)',
   },
-  '1566853': { // Tata Jamshedpur (IND, BF/BOF) — consistent, verified
+  '1566853': { // Tata Jamshedpur (IND, BF/BOF) — borderline under-report
     commodity: 'steel', cnCode: '72082700', route: 'BF-BOF',
-    selfReported: 1.92, countryDefaultValue: 3.02, benchmark: 1.37,
-    annualTonnesImported: 3100, inSharedPool: true, matchConfidence: 'high',
-    matchBasis: 'country + CN code + named installation (verified in pool)',
+    selfReported: 1.66, countryDefaultValue: 3.02, benchmark: 1.37,
+    annualTonnesImported: 3100, inSharedPool: false, matchConfidence: 'medium',
+    matchBasis: 'country + CN code + named installation (awaiting verification)',
   },
   '1567076': { // MMK Türkiye (TUR, EAF) — clean scrap/EAF route
     commodity: 'steel', cnCode: '72142000', route: 'EAF',

@@ -17,7 +17,7 @@ const colorFor = scaleLinear<string>()
   .clamp(true)
 
 const maxTonnes = Math.max(...SUPPLIERS.map((s) => s.annualTonnesImported))
-const radiusFor = scaleLinear().domain([0, maxTonnes]).range([6, 20]).clamp(true)
+const radiusFor = scaleLinear().domain([0, maxTonnes]).range([8, 20]).clamp(true)
 
 export default function FacilityMap() {
   const [hover, setHover] = useState<Supplier | null>(null)
@@ -48,12 +48,12 @@ export default function FacilityMap() {
                     <Geography
                       key={geo.rsmKey}
                       geography={geo}
-                      fill="#16213a"
-                      stroke="#243049"
-                      strokeWidth={0.5}
+                      fill="#1b2942"
+                      stroke="#6b7da3"
+                      strokeWidth={0.7}
                       style={{
                         default: { outline: 'none' },
-                        hover: { fill: '#1b2840', outline: 'none' },
+                        hover: { fill: '#243a5e', outline: 'none' },
                         pressed: { outline: 'none' },
                       }}
                     />
@@ -75,6 +75,8 @@ export default function FacilityMap() {
                     onClick={() => setPinned(s)}
                     style={{ default: { cursor: 'pointer' } }}
                   >
+                    {/* invisible hit-area so small dots are easy to hover/click */}
+                    <circle r={Math.max(r + 8, 15)} fill="transparent" />
                     {flag.flagged && (
                       <circle
                         r={r + 4}

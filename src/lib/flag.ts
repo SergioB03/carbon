@@ -16,7 +16,10 @@ export function midpoint(s: Supplier): number {
   return (s.independentEstimate.low + s.independentEstimate.high) / 2
 }
 
-export function evaluateFlag(s: Supplier): FlagResult {
+export function evaluateFlag(
+  s: Supplier,
+  threshold: number = DIVERGENCE_THRESHOLD,
+): FlagResult {
   const mid = midpoint(s)
   const divergence = (mid - s.selfReported) / mid
 
@@ -25,11 +28,11 @@ export function evaluateFlag(s: Supplier): FlagResult {
   const confidentEnough = s.estimateConfidence !== 'low'
   const clearlyBelowRange = s.selfReported < s.independentEstimate.low
 
-  const flagged =
-    confidentEnough && clearlyBelowRange && divergence > DIVERGENCE_THRESHOLD
+  const flagged = confidentEnough && clearlyBelowRange && divergence > threshold
 
+  // Priority kicks in well above the chosen threshold; watch is the band just over it.
   let severity: FlagResult['severity'] = 'none'
-  if (flagged) severity = divergence > 0.33 ? 'priority' : 'watch'
+  if (flagged) severity = divergence > Math.max(0.33, threshold * 1.5) ? 'priority' : 'watch'
 
   const reason = flagged
     ? `Self-reported ${s.selfReported.toFixed(2)} sits below the independent estimate ` +
@@ -44,6 +47,9 @@ export function evaluateFlag(s: Supplier): FlagResult {
 }
 
 /** Convenience: all suppliers carrying a priority/watch flag, importer-view only. */
-export function flaggedSuppliers(suppliers: Supplier[]): Supplier[] {
-  return suppliers.filter((s) => evaluateFlag(s).flagged)
+export function flaggedSuppliers(
+  suppliers: Supplier[],
+  threshold: number = DIVERGENCE_THRESHOLD,
+): Supplier[] {
+  return suppliers.filter((s) => evaluateFlag(s, threshold).flagged)
 }
