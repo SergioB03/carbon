@@ -1,205 +1,270 @@
-import { useState } from 'react'
-import {
-  Area,
-  ComposedChart,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import { SUPPLIERS } from '../data/suppliers'
-import { HISTORY, facilityFor } from '../lib/history'
-import { NUM } from '../lib/calc'
-import { byMaterial } from '../lib/material'
-import { useAppState, useMode } from '../state/appState'
-import { Card, SectionTitle, Pill, ConfidenceChip, FlagEmoji } from './ui'
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-const PROJ_END = 2034
+import React, { useState, useMemo } from 'react';
+import { 
+  ResponsiveContainer, 
+  ComposedChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  Tooltip as ChartTooltip, 
+  Legend, 
+  ReferenceLine, 
+  Area 
+} from 'recharts';
+import { Supplier } from '../types';
+import { Card, SectionTitle } from './ui';
+import { getEstimateRange, getEstimateMidpoint } from '../lib/calc';
+import { Calendar, HelpCircle, Shield, Sparkle, ShieldCheck } from 'lucide-react';
+import TrustPassport from './TrustPassport';
 
-// Build the blended series. We plot TWO real measured signals, because the
-// CBAM-priced intensity is a constant emissions factor in Climate TRACE (so on
-// its own it's a flat line), while the full cradle-to-gate footprint genuinely
-// MOVES year to year — mostly as the supplier's grid electricity changes:
-//   • full  = full cradle-to-gate intensity (the real movement, the hero line)
-//   • priced = CBAM-scope intensity (the flat factor we actually price/project)
-// Observed years are solid; past the last observed year each is HELD CONSTANT
-// (dashed) to 2034 — an honest deterministic path, not a forecast. The band is
-// the supplier's own confidence wrapped around the full footprint.
-function buildSeries(histId: number, confBand: number) {
-  const f = facilityFor(histId)
-  if (!f) return { rows: [], lastObs: 0, firstObs: 0, hasFull: false }
-  const obs = f.series.filter((s) => !s.partial)
-  const firstObs = obs[0]?.year ?? f.series[0].year
-  const lastObs = obs[obs.length - 1]?.year ?? f.series[f.series.length - 1].year
-  const hasFull = f.latest.fullIntensity != null
-  const heldPriced = f.latest.intensity
-  const heldFull = f.latest.fullIntensity ?? f.latest.intensity
-  const rows: Array<{
-    year: number
-    obsFull: number | null
-    obsPriced: number | null
-    projFull: number | null
-    projPriced: number | null
-    band: [number, number] | null
-  }> = []
-  for (const s of obs) {
-    const full = s.fullIntensity ?? s.intensity
-    rows.push({
-      year: s.year,
-      obsFull: full,
-      obsPriced: s.intensity,
-      projFull: s.year === lastObs ? full : null, // anchor dashed lines
-      projPriced: s.year === lastObs ? s.intensity : null,
-      band: [full * (1 - confBand), full * (1 + confBand)],
-    })
-  }
-  for (let y = lastObs + 1; y <= PROJ_END; y++) {
-    rows.push({
-      year: y,
-      obsFull: null,
-      obsPriced: null,
-      projFull: heldFull,
-      projPriced: heldPriced,
-      band: [heldFull * (1 - confBand), heldFull * (1 + confBand)],
-    })
-  }
-  return { rows, lastObs, firstObs, hasFull }
-}
+export default function ProvenanceCard({ 
+  suppliers, 
+  selectedSupplierId,
+  setSelectedSupplierId
+}: { 
+  suppliers: Supplier[];
+  selectedSupplierId: string;
+  setSelectedSupplierId: (id: string) => void;
+}) {
+  const [showPassport, setShowPassport] = useState<boolean>(false);
 
-export default function ProvenanceCard() {
-  const mode = useMode()
-  const { material } = useAppState()
-  const pool = byMaterial(SUPPLIERS, material)
-  const [supId, setSupId] = useState(SUPPLIERS.find((s) => s.commodity === 'aluminium')?.id ?? SUPPLIERS[0].id)
-  // Keep the selected supplier valid for the active material lens.
-  const sup = pool.find((s) => s.id === supId) ?? pool[0] ?? SUPPLIERS[0]
-  const fac = facilityFor(sup.historyId!)!
-  const confBand = { high: 0.06, medium: 0.1, low: 0.2 }[fac.confidence] ?? 0.15
-  const { rows, lastObs, firstObs, hasFull } = buildSeries(sup.historyId!, confBand)
-  const scopeShare = sup.fullFootprint ? Math.round((fac.latest.intensity / sup.fullFootprint) * 100) : null
+  const selectedSupplier = useMemo(() => {
+    return suppliers.find(s => s.id === selectedSupplierId) || suppliers[0];
+  }, [suppliers, selectedSupplierId]);
+
+  // Combine measured history + projected constant path to 2034
+  const chartData = useMemo(() => {
+    if (!selectedSupplier) return [];
+    
+    const history = selectedSupplier.history;
+    const finalHistYear = history[history.length - 1].year;
+    
+    // Convert history
+    const data = history.map((h) => {
+      // Create uncertainty band around full intensity
+      let spread = 0.08;
+      if (selectedSupplier.estimateConfidence === 'medium') spread = 0.16;
+      if (selectedSupplier.estimateConfidence === 'low') spread = 0.30;
+      
+      const low = Math.max(0, h.fullIntensity * (1 - spread));
+      const high = h.fullIntensity * (1 + spread);
+
+      return {
+        year: h.year,
+        intensity: h.intensity,
+        fullIntensity: h.fullIntensity,
+        measured: true,
+        projected: false,
+        uncertainty: [low, high],
+      };
+    });
+
+    // Projected years (finalHistYear + 1 to 2034)
+    const latestHist = history[history.length - 1];
+    for (let yr = finalHistYear + 1; yr <= 2034; yr++) {
+      let spread = 0.12;
+      if (selectedSupplier.estimateConfidence === 'medium') spread = 0.22;
+      if (selectedSupplier.estimateConfidence === 'low') spread = 0.35;
+      
+      const low = Math.max(0, latestHist.fullIntensity * (1 - spread));
+      const high = latestHist.fullIntensity * (1 + spread);
+
+      data.push({
+        year: yr,
+        // Projections hold direct and full constant
+        intensity: latestHist.intensity,
+        fullIntensity: latestHist.fullIntensity,
+        measured: false,
+        projected: true,
+        uncertainty: [low, high],
+      });
+    }
+
+    return data;
+  }, [selectedSupplier]);
+
+  const latestHistory = useMemo(() => {
+    if (!selectedSupplier || selectedSupplier.history.length === 0) return null;
+    return selectedSupplier.history[selectedSupplier.history.length - 1];
+  }, [selectedSupplier]);
+
+  // Calculation of priced proportion vs total footprint
+  const stats = useMemo(() => {
+    if (!selectedSupplier || !latestHistory) return { pricedPct: 0, outOfScope: 0 };
+    const direct = latestHistory.intensity;
+    const total = latestHistory.fullIntensity;
+    const pricedPct = (direct / total) * 100;
+    const outOfScope = total - direct;
+    return { pricedPct, outOfScope };
+  }, [selectedSupplier, latestHistory]);
+
+  const hasElectricityLayer = selectedSupplier && selectedSupplier.commodity !== 'cement';
 
   return (
-    <Card>
-      <SectionTitle
-        kicker="Real provenance — observed → projected"
-        title="This supplier's measured emissions history, then the legislated path"
-        sub="Two real measured signals: the full cradle-to-gate footprint (which moves year to year, mostly with the grid) and the flatter CBAM-priced slice. Left of 2026 is observed Climate TRACE data; right is held constant — not a forecast. The band is the supplier's own confidence."
-        right={
+    <Card className="col-span-1 border-stone-200">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6 pb-6 border-b border-stone-150">
+        <div>
+          <span className="font-mono text-[9px] uppercase tracking-widest text-[#b24c30] bg-[#b24c30]/10 px-2.5 py-0.5 rounded-xs font-semibold">
+            Section 05 / Provenance Blend
+          </span>
+          <h4 className="font-serif text-xl md:text-2xl text-stone-900 mt-2 font-normal">
+            Measured History vs. Projected Blend
+          </h4>
+          <p className="text-xs text-stone-500 font-sans mt-1">
+            Real Climate TRACE observations (2021–2025) coupled with a flat deterministic policy projection mapping to 2034.
+          </p>
+        </div>
+
+        {/* Dropdown limited to active scoped material */}
+        <div className="shrink-0">
+          <label className="block font-mono text-[9px] text-stone-400 uppercase mb-1">Select Facility</label>
           <select
-            value={supId}
-            onChange={(e) => setSupId(e.target.value)}
-            className="rounded-xl border border-edge bg-panel2 px-3 py-2 text-sm text-text"
+            value={selectedSupplierId}
+            onChange={(e) => setSelectedSupplierId(e.target.value)}
+            className="font-mono text-xs text-stone-800 bg-stone-50 border border-stone-300 p-2 rounded-xs focus:outline-hidden focus:border-stone-500"
           >
-            {pool.map((s) => (
+            {suppliers.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.facilityName}
+                {s.name} ({s.country})
               </option>
             ))}
           </select>
-        }
-      />
+        </div>
+      </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        <FlagEmoji code={sup.countryCode} />
-        <span className="font-medium text-text">{fac.name}</span>
-        {fac.illustrative && (
-          <Pill title="Real plant, owner & LEI; emissions calibrated — not from the Climate TRACE extract">est.</Pill>
-        )}
-        <Pill>{sup.commodity}</Pill>
-        {sup.productionRoute !== 'n/a' && <Pill>{sup.productionRoute}</Pill>}
-        <ConfidenceChip level={fac.confidence as 'low' | 'medium' | 'high'} />
-        <span className="text-mute">
-          owner <span className="text-text">{fac.owner.parent}</span>
-          {fac.owner.lei && (
-            <span className="stat-num ml-1 text-accent" title="Real LEI — resolves live in the Evidence tab">
-              · LEI {fac.owner.lei}
-            </span>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        {/* Chart View (8 cols) */}
+        <div className="lg:col-span-8">
+          <div className="h-64 sm:h-72 w-full font-mono text-[10px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -25 }}>
+                <XAxis dataKey="year" stroke="#78716c" tickLine={false} />
+                <YAxis stroke="#78716c" tickLine={false} label={{ value: 'tCO₂e/t', angle: -90, position: 'insideLeft', style: { fill: '#78716c' } }} />
+                
+                {/* Confidence Band shading only */}
+                <Area 
+                  type="monotone" 
+                  dataKey="uncertainty" 
+                  stroke="none" 
+                  fill="#e7e5e4" 
+                  fillOpacity={0.45} 
+                  name="Climate TRACE Uncertainty Band"
+                />
+
+                {/* CBAM scope line */}
+                <Line
+                  type="monotone"
+                  dataKey="intensity"
+                  stroke="#2E4A3F"
+                  strokeWidth={2}
+                  dot={({ payload, cx, cy }) => payload.measured ? <circle cx={cx} cy={cy} r={3} fill="#2E4A3F" stroke="white" /> : null}
+                  name="CBAM Priced direct footprint"
+                />
+
+                {/* Cradle-to-gate line (only if not cement) */}
+                {hasElectricityLayer && (
+                  <Line
+                    type="monotone"
+                    dataKey="fullIntensity"
+                    stroke="#b24c30"
+                    strokeWidth={1.5}
+                    dot={({ payload, cx, cy }) => payload.measured ? <circle cx={cx} cy={cy} r={3} fill="#b24c30" stroke="white" /> : null}
+                    name="Full Cradle-to-Gate emissions"
+                  />
+                )}
+
+                <ReferenceLine x={2026} stroke="#b24c30" strokeDasharray="3 3" label={{ value: "CBAM 2026", position: "top", fill: "#b24c30", fontStyle: "italic", offset: 10 }} />
+                
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-stone-900 text-stone-200 border border-stone-800 p-2 text-xs font-mono rounded-xs shadow-md">
+                          <p className="border-b border-stone-800 pb-1 mb-1 font-bold text-stone-50">Year {data.year} ({data.measured ? 'Measured' : 'Projected'})</p>
+                          <p className="text-emerald-400">Priced Intensity: {data.intensity.toFixed(3)} t/t</p>
+                          {hasElectricityLayer && <p className="text-orange-400">Full Intensity: {data.fullIntensity.toFixed(3)} t/t</p>}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Legend />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Framing & Legend Details (4 cols) */}
+        <div className="lg:col-span-4 bg-stone-50 border border-stone-200 p-5 rounded-xs space-y-4">
+          <div className="flex items-center gap-1.5 font-mono text-[9px] text-[#243C32] uppercase font-bold">
+            <Sparkle className="w-3.5 h-3.5" />
+            <span>Honest Scope Story</span>
+          </div>
+
+          <h5 className="font-serif text-lg text-stone-900 leading-tight">
+            How much footprint is actually priced?
+          </h5>
+
+          {hasElectricityLayer ? (
+            <div className="space-y-3 font-sans text-xs text-stone-600">
+              <p>
+                In Aluminium & Steel, CBAM regulates predominantly <strong>direct scope + PFCs</strong> (e.g., <strong>{latestHistory?.intensity.toFixed(2)} tCO₂e/t</strong>).
+              </p>
+              <div className="bg-white border border-stone-200/60 p-3 rounded-xs flex items-center justify-between">
+                <div>
+                  <span className="block font-mono text-[10px] text-stone-400">CBAM-PRICED SHARE</span>
+                  <span className="font-mono text-xl font-bold text-[#2E4A3F]">{stats.pricedPct.toFixed(0)}%</span>
+                </div>
+                <div className="text-right">
+                  <span className="block font-mono text-[10px] text-stone-400">OUT OF SCOPE</span>
+                  <span className="font-mono text-sm font-semibold text-stone-600">{(100 - stats.pricedPct).toFixed(0)}%</span>
+                </div>
+              </div>
+              <p className="italic text-[11px] leading-relaxed text-stone-500">
+                The remaining {stats.outOfScope.toFixed(2)} tCO₂e/t represents grid electrolysis electricity, which CBAM ignores. Highly critical when evaluating actual trade footprints!
+              </p>
+            </div>
+          ) : (
+            <div className="font-sans text-xs text-stone-600 space-y-2">
+              <p>
+                Cement manufacturing carries <strong>zero indirect electricity layer</strong> in Climate TRACE.
+              </p>
+              <div className="bg-white border border-stone-200/60 p-3 rounded-xs font-mono text-[11px]">
+                <span className="text-[#2E4A3F] font-bold block mb-1">✓ TWO LINES COINCIDE EXACTLY</span>
+                <span>Both CBAM priced and Cradle-to-Gate emissions are flat matched.</span>
+              </div>
+              <p className="italic text-[11px] leading-relaxed text-stone-500">
+                This reflects the chemistry of calcination. Clinker is priced for direct kiln fuels and calcium carbonate decomposition only.
+              </p>
+            </div>
           )}
-        </span>
-      </div>
 
-      <div className="h-[300px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={rows} margin={{ top: 8, right: 16, left: 4, bottom: 0 }}>
-            <defs>
-              <linearGradient id="provBand" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#34d399" stopOpacity={0.16} />
-                <stop offset="100%" stopColor="#34d399" stopOpacity={0.04} />
-              </linearGradient>
-            </defs>
-            <XAxis dataKey="year" stroke="#7d8aa5" tickLine={false} axisLine={false} />
-            <YAxis
-              stroke="#7d8aa5"
-              tickLine={false}
-              axisLine={false}
-              width={52}
-              domain={[0, (max: number) => Math.ceil(max * 1.25 * 10) / 10]}
-              tickFormatter={(v) => `${v}`}
-              label={{ value: 'tCO₂e/t', angle: -90, position: 'insideLeft', fill: '#7d8aa5', fontSize: 11 }}
-            />
-            <Tooltip
-              contentStyle={{ background: '#121a2b', border: '1px solid #243049', borderRadius: 12, color: '#e6ecf7' }}
-              formatter={(v: number, name) => {
-                if (v == null) return ['—', '']
-                const label =
-                  name === 'obsFull' ? 'Full cradle-to-gate (observed)'
-                  : name === 'projFull' ? 'Full footprint (held constant)'
-                  : name === 'obsPriced' ? 'CBAM-priced (observed)'
-                  : name === 'projPriced' ? 'CBAM-priced (held constant)'
-                  : 'Confidence band'
-                return [`${NUM(v, 2)} tCO₂e/t`, label]
-              }}
-              labelFormatter={(l) => `${l}`}
-            />
-            <Area type="monotone" dataKey="band" stroke="none" fill="url(#provBand)" connectNulls />
-            {/* Full cradle-to-gate footprint — the real year-to-year movement */}
-            <Line type="monotone" dataKey="obsFull" stroke="#34d399" strokeWidth={2.5} dot={{ r: 2 }} connectNulls name="obsFull" />
-            <Line type="monotone" dataKey="projFull" stroke="#34d399" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls name="projFull" />
-            {/* CBAM-priced slice — the flatter emissions factor we actually price */}
-            <Line type="monotone" dataKey="obsPriced" stroke="#60a5fa" strokeWidth={2} dot={{ r: 2 }} connectNulls name="obsPriced" />
-            <Line type="monotone" dataKey="projPriced" stroke="#60a5fa" strokeWidth={1.75} strokeDasharray="5 4" dot={false} connectNulls name="projPriced" />
-            <ReferenceLine x={2026} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'CBAM begins', fill: '#f59e0b', fontSize: 10, position: 'top' }} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-mute">
-        <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-3 rounded-sm bg-brand/70" /> full cradle-to-gate {firstObs}–{lastObs} {hasFull ? '(real, moves with the grid)' : '(= CBAM-priced — no electricity layer)'}</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-3 rounded-sm bg-accent/70" /> CBAM-priced slice (the flat factor we price)</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block h-0 w-3 border-t-2 border-dashed border-mute" /> held constant to 2034 — drag it down in the simulator</span>
-      </div>
-
-      {/* CBAM scope vs full footprint — the aluminium story */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-edge bg-panel2 p-3">
-          <div className="text-[11px] text-mute">CBAM-scope intensity (priced)</div>
-          <div className="stat-num text-xl font-semibold text-brand">
-            {NUM(fac.latest.intensity, 2)} <span className="text-xs text-mute">tCO₂e/t</span>
-          </div>
-          <div className="mt-1 text-[11px] text-mute">
-            {sup.commodity === 'steel' ? 'Direct + process emissions' : sup.commodity === 'aluminium' ? 'Direct + PFCs (electricity excluded)' : 'Direct process + fuel'}
-          </div>
-        </div>
-        <div className="rounded-xl border border-edge bg-panel2 p-3">
-          <div className="text-[11px] text-mute">Full cradle-to-gate footprint</div>
-          <div className="stat-num text-xl font-semibold text-mute">
-            {sup.fullFootprint ? NUM(sup.fullFootprint, 2) : '—'} <span className="text-xs text-mute">tCO₂e/t</span>
-          </div>
-          <div className="mt-1 text-[11px] text-mute">
-            {scopeShare != null
-              ? `incl. purchased electricity — only ~${scopeShare}% is CBAM-priced`
-              : 'electricity-inclusive footprint'}
+          {/* Verification Audit trigger button */}
+          <div className="pt-2">
+            <button
+              onClick={() => setShowPassport(true)}
+              className="w-full font-mono text-[11px] font-semibold tracking-wide bg-[#2E4A3F] hover:bg-emerald-900 text-white py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 shadow-[0_4px_12px_rgba(46,74,63,0.15)] hover:scale-[1.01]"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Verify Compliance Passport</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <p className="mt-3 text-[11px] text-mute">
-        {HISTORY.source} · {HISTORY.release}.
-        {mode === 'pitch' &&
-          ' Climate TRACE figures are modelled satellite + ML estimates, not audited installation reports — a triage baseline, not a compliance number. Forward line is held constant (no decarbonisation assumed); the simulator lets you change it.'}
-      </p>
+      {/* Trust passport modal */}
+      {showPassport && selectedSupplier && (
+        <TrustPassport 
+          supplier={selectedSupplier} 
+          onClose={() => setShowPassport(false)} 
+        />
+      )}
     </Card>
-  )
+  );
 }

@@ -4,7 +4,7 @@
 
 ## What it is
 
-CarbonBridge is a **frontend-only proof-of-concept** built with React + Vite + TypeScript + Tailwind + Recharts + react-simple-maps. All data is **mock JSON living in `src/data`**. There is **no backend** — this is deliberate. Going frontend-only sidesteps the two hardest real-world problems (entity resolution between traders/distributors and specific producing facilities, and the data-pipeline plumbing) so the POC can focus on telling the product story clearly to a sharp audience.
+CarbonBridge is a **serverless, frontend-only proof-of-concept** built with React + Vite + TypeScript + Tailwind + Recharts + Leaflet. It is **honest about what's real**: supplier facilities, owners, **LEIs**, locations, routes and multi-year emissions intensity are a **real static extract from Climate TRACE** (`src/data/history.json`, CC BY 4.0), and two feeds are **genuinely live from the browser** (UK Carbon Intensity API + GLEIF LEI registry — no key, no backend). The CBAM policy overlay (self-reported claims, default values, cert price) is calibrated to published figures. Going backend-free is deliberate: it sidesteps the two hardest real-world problems (entity resolution between traders/distributors and specific producing facilities, and the data-pipeline plumbing) so the POC can tell the product story clearly to a sharp audience.
 
 ## The persona
 
@@ -35,10 +35,10 @@ So the message is **"accruing now, first bill September 2027, climbing steeply t
 
 ```bash
 npm install
-npm run dev      # opens at http://localhost:5173
-npm run build    # typecheck + production build
+npm run dev      # opens at http://localhost:3000
+npm run build    # production build
 ```
 
 ## A note on the numbers
 
-All figures in this POC are **illustrative mock values**, calibrated to published orders of magnitude but not drawn from live systems. The reference for where the real production data would come from is in [`docs/MOCK_DATA.md`](docs/MOCK_DATA.md).
+The **Climate TRACE facility data, owners and LEIs are real**, and the UK-grid + GLEIF feeds are genuinely live. The CBAM **policy overlay** (self-reported claims, country default values, cert price) is **illustrative**, calibrated to published orders of magnitude. The four Americas comparators (Nucor/Alcoa/Gerdau/Albras) carry a real plant/owner/LEI with calibrated emissions and are marked "est.". The reference for where the rest of the production data would come from is in [`docs/MOCK_DATA.md`](docs/MOCK_DATA.md).

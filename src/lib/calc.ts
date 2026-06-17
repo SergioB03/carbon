@@ -1,105 +1,168 @@
-import type { Supplier, ForecastYear } from '../types'
-import { CERT_PRICE_EUR, PHASE_IN, defaultMarkup, phaseFor } from '../data/cbam'
-
-// CarbonBridge — CBAM cost math.
-//
-// Story we tell (accurately): liability ACCRUES in 2026 at a 2.5% factor, the
-// FIRST payment lands 30 Sept 2027, and the curve climbs steeply through 2034
-// as free allocation phases out. The avoidable slice is the gap between being
-// stuck on punitive DEFAULT values vs using VERIFIED actual supplier data.
-
-export interface IntensityChoice {
-  /** Override the intensity used for the "verified" path (e.g. simulator). */
-  [supplierId: string]: number | undefined
-}
-
-/** Embedded emissions (tCO2e/yr) for a supplier at a given intensity. */
-export function embeddedEmissions(s: Supplier, intensity: number): number {
-  return s.annualTonnesImported * intensity
-}
-
-/** Cert cost (€) for one supplier, one year, at a given intensity. */
-export function yearCost(
-  s: Supplier,
-  intensity: number,
-  year: number,
-): number {
-  const factor = phaseFor(year).cbamFactor
-  return embeddedEmissions(s, intensity) * factor * CERT_PRICE_EUR
-}
-
-/** The punitive default intensity for a year, including the annual mark-up. */
-export function effectiveDefault(s: Supplier, year: number): number {
-  return s.countryDefaultValue * (1 + defaultMarkup(year))
-}
-
 /**
- * The intensity we'd actually declare with verified data. We use the lower of
- * the supplier's self-report and the independent estimate midpoint ONLY if the
- * supplier is in the verified pool; otherwise we conservatively use the
- * independent estimate midpoint (you can't bank an unverified self-report).
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
  */
-export function verifiedIntensity(
-  s: Supplier,
-  override?: number,
+
+import { Supplier, MaterialLens, VerifyStatus, HistoricEmission } from '../types';
+
+export const CERT_PRICE_EUR = 78;
+
+export const PHASE_IN: { [year: number]: number } = {
+  2026: 0.025,  // 2.5%
+  2027: 0.050,  // 5% (First payment due Sep 30, 2027)
+  2028: 0.100,  // 10%
+  2029: 0.225,  // 22.5%
+  2030: 0.485,  // 48.5%
+  2031: 0.610,  // 61%
+  2032: 0.735,  // 73.5%
+  2033: 0.860,  // 86%
+  2034: 1.000,  // 100% (Full rate)
+};
+
+export const DEFAULT_MARKUP: { [year: number]: number } = {
+  2026: 0.10, // 10% markup
+  2027: 0.20, // 20% markup
+  2028: 0.30, // 30% markup
+  2029: 0.30,
+  2030: 0.30,
+  2031: 0.30,
+  2032: 0.30,
+  2033: 0.30,
+  2034: 0.30,
+};
+
+// Filters supplier list based on global lens
+export function byMaterial(suppliers: Supplier[], material: MaterialLens): Supplier[] {
+  if (material === 'all') return suppliers;
+  return suppliers.filter((s) => s.commodity === material);
+}
+
+// Estimates of Climate TRACE based on confidence widths
+export function getLatestIntensity(supplier: Supplier): number {
+  if (supplier.history.length === 0) return supplier.selfReported;
+  // Get 2025 emissions
+  const index = supplier.history.findIndex(h => h.year === 2025);
+  return index !== -1 ? supplier.history[index].intensity : supplier.history[supplier.history.length - 1].intensity;
+}
+
+export function getEstimateRange(supplier: Supplier): { low: number; high: number } {
+  const latest = getLatestIntensity(supplier);
+  let spread = 0.10; // high confidence
+  if (supplier.estimateConfidence === 'medium') spread = 0.20;
+  if (supplier.estimateConfidence === 'low') spread = 0.35;
+  
+  return {
+    low: Math.max(0.05, latest * (1 - spread)),
+    high: latest * (1 + spread),
+  };
+}
+
+export function getEstimateMidpoint(supplier: Supplier): number {
+  return getLatestIntensity(supplier);
+}
+
+// Determines intensity based on self-reported check
+export function getVerifiedIntensity(supplier: Supplier, status: 'none' | 'requested' | 'received' | string): number {
+  const isVerified = status === 'received' || supplier.inSharedPool;
+  const midpoint = getEstimateMidpoint(supplier);
+  
+  if (isVerified) {
+    // If verified, can bank lower self-reported number
+    return Math.min(supplier.selfReported, midpoint);
+  }
+  
+  // Otherwise, forced on independent estimate midpoint
+  return midpoint;
+}
+
+// Calculates raw carbon cost with specified intensity and year
+export function calculateCost(
+  tonnes: number,
+  intensity: number,
+  year: number
 ): number {
-  if (typeof override === 'number') return override
-  const mid = (s.independentEstimate.low + s.independentEstimate.high) / 2
-  return s.inSharedPool ? Math.min(s.selfReported, mid) : mid
+  const phaseFactor = PHASE_IN[year] || PHASE_IN[2034];
+  return tonnes * intensity * phaseFactor * CERT_PRICE_EUR;
 }
 
-/** Full 2026–2034 forecast for the whole book, with an optional per-supplier override. */
-export function forecast(
-  suppliers: Supplier[],
-  overrides: IntensityChoice = {},
-): ForecastYear[] {
-  return PHASE_IN.map((p) => {
-    let defaultCost = 0
-    let verifiedCost = 0
-    for (const s of suppliers) {
-      defaultCost += yearCost(s, effectiveDefault(s, p.year), p.year)
-      verifiedCost += yearCost(s, verifiedIntensity(s, overrides[s.id]), p.year)
-    }
-    return {
-      year: p.year,
-      cbamFactor: p.cbamFactor,
-      status: p.status,
-      defaultCost,
-      verifiedCost,
-      avoidable: defaultCost - verifiedCost,
-    }
-  })
+// Calculates default cost with punitive markup
+export function calculateDefaultCost(
+  supplier: Supplier,
+  year: number
+): number {
+  const markup = DEFAULT_MARKUP[year] || DEFAULT_MARKUP[2034];
+  const punitiveIntensity = supplier.countryDefaultValue * (1 + markup);
+  return calculateCost(supplier.annualTonnesImported, punitiveIntensity, year);
 }
 
-/** Per-supplier carbon cost in a single year (for shelf ranking). */
-export function supplierYearCost(
-  s: Supplier,
+// Calculates actual verified cost (incorporates shared pool & active state checks)
+export function calculateVerifiedCost(
+  supplier: Supplier,
+  verifyStatus: VerifyStatus,
   year: number,
-  override?: number,
-): { defaultCost: number; verifiedCost: number; avoidable: number } {
-  const defaultCost = yearCost(s, effectiveDefault(s, year), year)
-  const verifiedCost = yearCost(s, verifiedIntensity(s, override), year)
-  return { defaultCost, verifiedCost, avoidable: defaultCost - verifiedCost }
+  sliderOverrides: { [id: string]: number } = {}
+): number {
+  // A simulator slider override represents the supplier operating at that
+  // intensity going forward, so it must apply to EVERY projected year — not just
+  // 2030 — otherwise the cumulative 2026–2034 savings are badly undercounted.
+  const overrideVal = sliderOverrides[supplier.id];
+
+  const intensity = overrideVal !== undefined
+    ? overrideVal
+    : getVerifiedIntensity(supplier, verifyStatus[supplier.id] || 'none');
+
+  return calculateCost(supplier.annualTonnesImported, intensity, year);
 }
 
-/** Totals across a forecast — used for headline stats. */
-export function forecastTotals(rows: ForecastYear[]) {
-  const cumulativeAvoidable = rows.reduce((a, r) => a + r.avoidable, 0)
-  const firstPaymentYear = rows.find((r) => r.status === 'first-payment')?.year
-  const peak = rows[rows.length - 1]
-  return { cumulativeAvoidable, firstPaymentYear, peak }
+// Calculates complete ledger projections
+export function calculateSummaries(
+  suppliers: Supplier[],
+  verifyStatus: VerifyStatus,
+  year: number,
+  sliderOverrides: { [id: string]: number } = {}
+) {
+  let totalDefault = 0;
+  let totalVerified = 0;
+  let totalAvoidable = 0;
+  let totalTonnesImported = 0;
+
+  suppliers.forEach((s) => {
+    const sDefault = calculateDefaultCost(s, year);
+    const sVerified = calculateVerifiedCost(s, verifyStatus, year, sliderOverrides);
+    
+    totalDefault += sDefault;
+    totalVerified += sVerified;
+    totalAvoidable += Math.max(0, sDefault - sVerified);
+    totalTonnesImported += s.annualTonnesImported;
+  });
+
+  return {
+    totalDefault,
+    totalVerified,
+    totalAvoidable,
+    totalTonnesImported,
+  };
 }
 
-export const EUR = (n: number, frac = 0) =>
-  new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: frac,
-    minimumFractionDigits: frac,
-  }).format(n)
-
-export const NUM = (n: number, frac = 0) =>
-  new Intl.NumberFormat('en-IE', {
-    maximumFractionDigits: frac,
-    minimumFractionDigits: frac,
-  }).format(n)
+// Projected timeline ledger totals (2026-2034)
+export function calculateTimelineProjection(
+  suppliers: Supplier[],
+  verifyStatus: VerifyStatus,
+  sliderOverrides: { [id: string]: number } = {}
+): { year: number; defaultCost: number; verifiedCost: number; avoidable: number }[] {
+  const years = [2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034];
+  return years.map((y) => {
+    const { totalDefault, totalVerified, totalAvoidable } = calculateSummaries(
+      suppliers,
+      verifyStatus,
+      y,
+      sliderOverrides
+    );
+    return {
+      year: y,
+      defaultCost: totalDefault,
+      verifiedCost: totalVerified,
+      avoidable: totalAvoidable,
+    };
+  });
+}

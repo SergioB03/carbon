@@ -1,0 +1,8 @@
+{
+  "name": "Carbon Bridge",
+  "description": "A CBAM compliance verification dashboard bridging importer documentation with satellite-observed Climate TRACE emission counts to flag direct-estimate divergence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

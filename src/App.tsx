@@ -1,127 +1,190 @@
-import { IMPORTER } from './data/suppliers'
-import { useAppState } from './state/appState'
-import { MATERIALS } from './lib/material'
-import Overview from './views/Overview'
-import Suppliers from './views/Suppliers'
-import Simulator from './views/Simulator'
-import Evidence from './views/Evidence'
-import Copilot from './components/Copilot'
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-const NAV: { id: string; label: string; icon: string; hint: string }[] = [
-  { id: 'overview', label: 'Overview', icon: '▦', hint: 'Cost, to-dos & where it sits' },
-  { id: 'suppliers', label: 'Suppliers', icon: '◷', hint: 'Verify first & track requests' },
-  { id: 'simulator', label: 'Simulator', icon: '∿', hint: 'What-if decarbonisation payoff' },
-  { id: 'evidence', label: 'Evidence', icon: '▤', hint: 'Real measured data & live feeds' },
-]
+import React from 'react';
+import { AppStateProvider, useAppState } from './state/appState';
+import { MaterialLens, AppView } from './types';
+import { LogoFull } from './components/Logo';
+import Overview from './views/Overview';
+import Suppliers from './views/Suppliers';
+import Simulator from './views/Simulator';
+import Evidence from './views/Evidence';
+import Copilot from './components/Copilot';
+import JudgeTour from './components/JudgeTour';
+import { 
+  BarChart4, 
+  Users, 
+  Settings2, 
+  Compass, 
+  Layers, 
+  Database,
+  Anchor,
+  Sparkle
+} from 'lucide-react';
 
-const VIEWS: Record<string, () => JSX.Element> = {
+// Central Router View Map Sourced from PDF guides
+const VIEWS: Record<AppView, React.ComponentType> = {
   overview: Overview,
   suppliers: Suppliers,
   simulator: Simulator,
   evidence: Evidence,
-}
+};
 
-export default function App() {
-  const { view, setView, mode, setMode, material, setMaterial } = useAppState()
-  const Active = VIEWS[view] ?? Overview
+// Sidebar navigation specifications
+const NAV_ITEMS = [
+  { id: 'overview' as AppView, label: 'Overview', icon: Compass, hint: 'Cost, tasks & maps' },
+  { id: 'suppliers' as AppView, label: 'Suppliers', icon: Users, hint: 'Priority triage & track' },
+  { id: 'simulator' as AppView, label: 'Simulator', icon: Settings2, hint: 'What-if decabs payoff' },
+  { id: 'evidence' as AppView, label: 'Evidence', icon: Database, hint: 'TRACE observations' },
+];
+
+function MainLayout() {
+  const { 
+    mode, 
+    setMode, 
+    material, 
+    setMaterial, 
+    view, 
+    setView 
+  } = useAppState();
+
+  const ActiveComponent = VIEWS[view];
 
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-edge bg-panel/60 backdrop-blur">
-        <div className="flex items-center gap-2 px-5 py-5">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-brand/15 text-lg text-brand">
-            ⬡
-          </div>
-          <div>
-            <div className="text-sm font-semibold leading-tight">CarbonBridge</div>
-            <div className="text-[11px] text-mute">CBAM workspace</div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#F5F5F7] text-stone-900 flex selection:bg-stone-200 selection:text-stone-950 font-sans relative overflow-x-hidden">
+      
+      {/* Decorative Ambient Glass Blobs in the Background (Mac-style background art) */}
+      <div className="absolute top-12 left-1/4 w-[500px] h-[500px] bg-emerald-200/20 rounded-full filter blur-[120px] pointer-events-none mix-blend-multiply animate-pulse" />
+      <div className="absolute bottom-24 right-1/4 w-[400px] h-[400px] bg-amber-100/25 rounded-full filter blur-[100px] pointer-events-none mix-blend-multiply animate-pulse" style={{ animationDuration: '10s' }} />
+      <div className="absolute top-2/3 left-1/3 w-[450px] h-[450px] bg-sky-200/15 rounded-full filter blur-[110px] pointer-events-none mix-blend-multiply animate-pulse" style={{ animationDuration: '14s' }} />
 
-        {/* Global material lens — the importer's primary filter */}
-        <div className="px-3 pb-2">
-          <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-mute">
-            Material
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            {MATERIALS.map((m) => {
-              const active = m.id === material
-              return (
+      {/* 1. STICKY SIDEBAR (64 / 280px wide) */}
+      <aside className="w-72 bg-white/50 backdrop-blur-xl border-r border-[#E5E5EA] h-screen sticky top-0 flex flex-col justify-between shrink-0 select-none z-45">
+        
+        {/* Brand / Logo Section */}
+        <div className="p-6 pb-2.5">
+          <LogoFull size={28} />
+          
+          {/* Material Switcher lens selection */}
+          <div className="mt-6 pt-5 border-t border-stone-200/60 space-y-2">
+            <span className="font-mono text-[9px] text-stone-400 block font-bold uppercase tracking-widest">
+              MATERIAL LENS
+            </span>
+            <div className="grid grid-cols-2 gap-1 bg-stone-200/40 p-1 border border-stone-200/30 rounded-xl">
+              {(['all', 'steel', 'aluminium', 'cement'] as MaterialLens[]).map((m) => (
                 <button
-                  key={m.id}
-                  onClick={() => setMaterial(m.id)}
-                  className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-medium transition ${
-                    active
-                      ? 'border-brand/40 bg-brand/10 text-brand'
-                      : 'border-edge text-mute hover:bg-panel2 hover:text-text'
+                  key={m}
+                  onClick={() => setMaterial(m)}
+                  className={`py-1.5 px-2 text-[10px] font-mono rounded-lg cursor-pointer transition-all ${
+                    material === m
+                      ? 'bg-white text-stone-900 font-semibold shadow-sm'
+                      : 'text-stone-500 hover:text-stone-850'
                   }`}
                 >
-                  <span className={active ? 'text-brand' : ''}>{m.icon}</span>
-                  {m.label}
+                  {m.charAt(0).toUpperCase() + m.substring(1)}
                 </button>
-              )
-            })}
+              ))}
+            </div>
           </div>
         </div>
 
-        <nav className="mt-1 flex-1 space-y-1 overflow-y-auto border-t border-edge px-3 pt-3">
-          {NAV.map((n) => {
-            const active = n.id === view
+        {/* Sidebar Nav Buttons */}
+        <nav className="flex-1 px-4 py-4 space-y-1.5">
+          <span className="font-mono text-[9px] text-stone-405 block font-bold uppercase tracking-widest px-2 mb-2">
+            Workspace Nav
+          </span>
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isSelected = view === item.id;
+            
             return (
               <button
-                key={n.id}
-                onClick={() => setView(n.id)}
-                className={`group flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                  active
-                    ? 'bg-brand/10 text-text ring-1 ring-brand/30'
-                    : 'text-mute hover:bg-panel2 hover:text-text'
+                key={item.id}
+                onClick={() => setView(item.id)}
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all text-left cursor-pointer group ${
+                  isSelected
+                    ? 'bg-stone-900/95 text-[#F5F5F7] font-medium shadow-[0_4px_12px_rgba(0,0,0,0.1)]'
+                    : 'text-stone-505 hover:bg-stone-200/40 hover:text-stone-900'
                 }`}
               >
-                <span className={`mt-0.5 text-base ${active ? 'text-brand' : ''}`}>{n.icon}</span>
-                <span>
-                  <span className="block text-sm font-medium">{n.label}</span>
-                  <span className="block text-[11px] leading-tight text-mute">{n.hint}</span>
-                </span>
+                <Icon className={`w-4 h-4 shrink-0 transition-transform duration-250 group-hover:scale-105 ${isSelected ? 'text-emerald-400' : 'text-stone-400 group-hover:text-stone-900'}`} />
+                <div className="leading-none mt-0.5">
+                  <span className="text-xs font-semibold block">{item.label}</span>
+                  <span className={`text-[8.5px] font-sans font-light opacity-70 block mt-1 ${isSelected ? 'text-stone-300' : 'text-stone-400 group-hover:text-stone-500'}`}>
+                    {item.hint}
+                  </span>
+                </div>
               </button>
-            )
+            );
           })}
         </nav>
 
-        {/* View-mode toggle */}
-        <div className="px-3 pb-2 pt-2">
-          <div className="flex rounded-xl border border-edge bg-panel2 p-1 text-xs">
-            {(['operator', 'pitch'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 rounded-lg px-2 py-1.5 font-medium capitalize transition ${
-                  mode === m ? 'bg-brand/15 text-brand' : 'text-mute hover:text-text'
-                }`}
-              >
-                {m === 'pitch' ? 'Pitch / judge' : 'Operator'}
-              </button>
-            ))}
+        {/* Pitch Mode Switcher controls */}
+        <div className="p-4 bg-stone-100/50 border-t border-stone-200/60 space-y-3">
+          <div className="flex justify-between items-center px-1">
+            <span className="font-mono text-[9px] text-stone-400 block font-bold uppercase tracking-wider">
+              App Mode View
+            </span>
+            <span className="font-mono text-[9px] text-emerald-800 font-bold bg-emerald-500/15 border border-emerald-500/10 px-1.5 py-0.5 rounded-full">
+              V1.2
+            </span>
           </div>
-          <div className="mt-1 px-1 text-[10px] text-mute">
-            {mode === 'operator' ? 'Clean importer view' : 'Shows methodology, sources & framing'}
+
+          <div className="grid grid-cols-2 gap-1 bg-stone-200/50 p-1 rounded-xl">
+            <button
+              onClick={() => setMode('operator')}
+              className={`py-1 text-[9px] font-mono rounded-lg cursor-pointer transition-all ${
+                mode === 'operator'
+                  ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                  : 'text-stone-500'
+              }`}
+            >
+              Operator
+            </button>
+            <button
+              onClick={() => setMode('pitch')}
+              className={`py-1 text-[9px] font-mono rounded-lg cursor-pointer transition-all ${
+                mode === 'pitch'
+                  ? 'bg-stone-900 text-stone-100 shadow-sm font-semibold'
+                  : 'text-stone-500'
+              }`}
+            >
+              Pitch / Judge
+            </button>
+          </div>
+          
+          <div className="text-[9px] text-stone-450 leading-tight font-sans font-light px-1">
+            {mode === 'operator' 
+              ? 'Working importer mode. Methodology metadata is safely hidden.' 
+              : 'Pitch mode enabled. Visual details and design rationale visible.'}
           </div>
         </div>
 
-        <div className="border-t border-edge px-5 py-3 text-[11px] text-mute">
-          <div className="font-medium text-text">{IMPORTER.name}</div>
-          <div>{IMPORTER.country} · EORI {IMPORTER.eori}</div>
-        </div>
       </aside>
 
-      {/* Main */}
-      <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-[1180px] px-8 py-8">
-          <Active />
+      {/* 2. MAIN CONTAINER AREA */}
+      <main className="flex-1 overflow-y-auto h-screen p-8 md:p-12 relative z-10 flex flex-col items-center">
+        <div className="max-w-5xl w-full">
+          <ActiveComponent />
         </div>
       </main>
 
+      {/* 3. FLOATABLE COPILOT ASSIST (FAB) */}
       <Copilot />
+
+      {/* 4. GUIDED JUDGE PRESENTATION TOUR PLAYBOOK */}
+      <JudgeTour />
+
     </div>
-  )
+  );
+}
+
+export default function App() {
+  return (
+    <AppStateProvider>
+      <MainLayout />
+    </AppStateProvider>
+  );
 }

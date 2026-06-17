@@ -1,55 +1,55 @@
-import type { Supplier, FlagResult } from '../types'
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-// CarbonBridge — Verification Priority Flag (formerly "greenwashing detector").
-//
-// CRITICAL FRAMING (see docs/SPEC.md): this is a PRIVATE TRIAGE SIGNAL shown
-// only in the importer's own view. It is NOT a public accusation. Facility-level
-// satellite / modeled data carries wide uncertainty (Climate TRACE power-plant
-// CO2 ran ~50% low vs an established inventory; satellites can't attribute CO2
-// to a single facility). So we never say "false" or "implausible" — we say
-// "diverges from the independent estimate, recommend verification."
+import { Supplier } from '../types';
+import { getEstimateRange, getEstimateMidpoint } from './calc';
 
-/** Under-reporting must exceed this fraction (of the estimate midpoint) to flag. */
-export const DIVERGENCE_THRESHOLD = 0.2
-
-export function midpoint(s: Supplier): number {
-  return (s.independentEstimate.low + s.independentEstimate.high) / 2
+export interface FlagResult {
+  flagged: boolean;
+  divergence: number; // percentage (decimal e.g. 0.25)
+  severity: 'none' | 'watch' | 'priority';
+  reason: string;
 }
 
-export function evaluateFlag(
-  s: Supplier,
-  threshold: number = DIVERGENCE_THRESHOLD,
-): FlagResult {
-  const mid = midpoint(s)
-  const divergence = (mid - s.selfReported) / mid
-
-  // We only ever flag when the independent estimate is itself credible
-  // (medium/high confidence). Low-confidence estimates can't justify a flag.
-  const confidentEnough = s.estimateConfidence !== 'low'
-  const clearlyBelowRange = s.selfReported < s.independentEstimate.low
-
-  const flagged = confidentEnough && clearlyBelowRange && divergence > threshold
-
-  // Priority kicks in well above the chosen threshold; watch is the band just over it.
-  let severity: FlagResult['severity'] = 'none'
-  if (flagged) severity = divergence > Math.max(0.33, threshold * 1.5) ? 'priority' : 'watch'
-
-  const reason = flagged
-    ? `Self-reported ${s.selfReported.toFixed(2)} sits below the independent estimate ` +
-      `(${s.independentEstimate.low}–${s.independentEstimate.high} tCO₂/t, ` +
-      `${s.estimateConfidence} confidence) by ~${Math.round(divergence * 100)}%. ` +
-      `Recommend verification — not an accusation.`
-    : confidentEnough
-      ? 'Self-reported figure is consistent with the independent estimate.'
-      : 'Independent estimate confidence too low to flag; treat as unverified.'
-
-  return { flagged, divergence, reason, severity }
-}
-
-/** Convenience: all suppliers carrying a priority/watch flag, importer-view only. */
-export function flaggedSuppliers(
-  suppliers: Supplier[],
-  threshold: number = DIVERGENCE_THRESHOLD,
-): Supplier[] {
-  return suppliers.filter((s) => evaluateFlag(s, threshold).flagged)
+export function evaluateFlag(supplier: Supplier, threshold: number): FlagResult {
+  const midpoint = getEstimateMidpoint(supplier);
+  const range = getEstimateRange(supplier);
+  
+  // Divergence check
+  const divergence = (midpoint - supplier.selfReported) / midpoint;
+  
+  // 1. Low confidence filter: A low-confidence estimate CAN NEVER trigger a flag.
+  // Those suppliers are labelled "unverified/can't assess", not flagged.
+  const isConfident = supplier.estimateConfidence !== 'low';
+  
+  // 2. Clearly below range: selfReported is lower than the estimate range's low value
+  const isClearlyBelowRange = supplier.selfReported < range.low;
+  
+  // 3. Exceeds the sliding threshold
+  const exceedsThreshold = divergence > threshold;
+  
+  const flagged = isConfident && isClearlyBelowRange && exceedsThreshold;
+  
+  let severity: 'none' | 'watch' | 'priority' = 'none';
+  let reason = '';
+  
+  if (flagged) {
+    const isPriorityLimit = divergence > Math.max(0.33, threshold * 1.5);
+    severity = isPriorityLimit ? 'priority' : 'watch';
+    
+    reason = `Self-reported intensity of ${supplier.selfReported} tCO₂/t sits clearly below our independent Climate TRACE estimate range of ${range.low.toFixed(2)}–${range.high.toFixed(2)} tCO₂/t (divergence of ${(divergence * 100).toFixed(0)}%). Recommend formal verification prior to customs filing.`;
+  } else if (!isConfident) {
+    reason = 'Independent Climate TRACE estimate carries low confidence. Baseline triage cannot reliably assess divergence risk. Scrap validation recommended.';
+  } else {
+    reason = 'No significant divergence found relative to historical Climate TRACE emissions range.';
+  }
+  
+  return {
+    flagged,
+    divergence,
+    severity,
+    reason,
+  };
 }

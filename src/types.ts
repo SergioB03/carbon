@@ -1,98 +1,72 @@
-// CarbonBridge — shared domain types.
-// POC uses mock data only; these types are shaped so the layer could later
-// swap to the real sources listed in docs/MOCK_DATA.md.
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-export type Confidence = 'low' | 'medium' | 'high'
+export type MaterialLens = 'all' | 'steel' | 'aluminium' | 'cement';
+export type ViewMode = 'operator' | 'pitch';
+export type AppView = 'overview' | 'suppliers' | 'simulator' | 'evidence';
 
-// Production route drives the emissions benchmark for steel (BF-BOF is far
-// more carbon-intensive than scrap-fed EAF). Sourced in real life from the
-// Global Steel Plant Tracker. "n/a" for non-steel commodities.
-export type ProductionRoute = 'BF-BOF' | 'EAF' | 'mixed' | 'n/a'
+export interface OwnerInfo {
+  parent: string;
+  lei: string;
+  hq: string;
+}
 
-export type CommodityGroup =
-  | 'steel'
-  | 'aluminium'
-  | 'cement'
-  | 'fertiliser'
-  | 'electricity'
-  | 'hydrogen'
-
-/** An estimate is ALWAYS carried as a range + confidence, never a hard number. */
 export interface EstimateRange {
-  low: number
-  high: number
+  low: number;
+  high: number;
+}
+
+export interface HistoricEmission {
+  year: number;
+  intensity: number;       // direct in-scope (tCO2e/t)
+  fullIntensity: number;   // full cradle-to-gate (incl. electricity) (tCO2e/t)
+  emissions: number;       // total tonnes CO2e
+  production: number;      // total tonnes produced
 }
 
 export interface Supplier {
-  id: string
-  /** The name the importer actually has — often a trader/distributor, NOT the mill. */
-  name: string
-  /** The producing installation, when resolved. May be undefined (unknown). */
-  facilityName?: string
-  country: string
-  /** ISO-2 (lowercase) for flag emoji / lookups. */
-  countryCode: string
-  lat: number
-  lon: number
-  commodity: CommodityGroup
-  /** CBAM CN code (8-digit). */
-  cnCode: string
-  productionRoute: ProductionRoute
-
-  // --- Emissions intensity, tCO2e per tonne of product ---
-  /** What the supplier self-declares. */
-  selfReported: number
-  /** Independent (Climate TRACE–style modeled) estimate, carried as a RANGE. */
-  independentEstimate: EstimateRange
-  /** Confidence in the independent estimate. Drives whether we flag at all. */
-  estimateConfidence: Confidence
-  /** Punitive country/CN-specific CBAM default (Reg. (EU) 2025/2621), pre-markup. */
-  countryDefaultValue: number
-  /** EU best-practice benchmark intensity for the commodity/route. */
-  benchmark: number
-
-  // --- Commercial context ---
-  /** Tonnes/year this importer brings in from this supplier. */
-  annualTonnesImported: number
-  /** Whether this supplier's verified data already lives in the shared pool. */
-  inSharedPool: boolean
-
-  // --- Entity resolution (NEVER claimed as automatic) ---
-  matchConfidence: Confidence
-  matchBasis: string
-
-  // --- Real provenance (Climate TRACE) ---
-  /** Climate TRACE source_id → links to the multi-year series in history.json. */
-  historyId?: number
-  /** Resolved owner from Climate TRACE ownership data (real). */
-  owner?: { parent: string; lei: string | null; hq: string | null }
-  /**
-   * Cradle-to-gate intensity incl. purchased electricity (tCO₂e/t). For steel &
-   * aluminium this is mostly OUT of CBAM scope — shown for context, not pricing.
-   */
-  fullFootprint?: number
-  /** Americas comparator: real identity, calibrated numbers, not from the CT extract. */
-  illustrative?: boolean
+  id: string;
+  name: string;
+  facilityName: string;
+  country: string;
+  lat: number;
+  lon: number;
+  commodity: 'steel' | 'aluminium' | 'cement';
+  subsector: string;       // Climate TRACE subsector match e.g. 'iron-and-steel'
+  productionRoute: string; // 'BF-BOF' | 'EAF' | 'cement-kiln' | etc.
+  
+  // Custom metrics of the CarbonBridge layout
+  selfReported: number;          // Supplier self-reported intensity
+  countryDefaultValue: number;   // Punitive EU-published country default
+  benchmark: number;             // Best-practice target benchmark
+  cnCode: string;                // product classification code
+  annualTonnesImported: number;  // input material volume from Meridian
+  
+  // Real Climate TRACE extracted statistics
+  estimateConfidence: 'low' | 'medium' | 'high';
+  fullFootprint: number;         // full cradle-to-gate footprint
+  history: HistoricEmission[];
+  
+  // Metadata layers
+  owner: OwnerInfo;
+  inSharedPool: boolean;         // Verified by other importers?
+  sharedPoolCount?: number;      // How many other importers verified this
+  matchConfidence: 'low' | 'medium' | 'high';
+  matchBasis: string;            // Explanation of record resolve matching
+  illustrative?: boolean;        // true for calibrated Americas comparable rows
 }
 
-/** Output of the verification-priority triage check for one supplier. */
-export interface FlagResult {
-  flagged: boolean
-  /** (estimateMid − selfReported) / estimateMid, as a fraction. Positive = under-reporting. */
-  divergence: number
-  reason: string
-  severity: 'none' | 'watch' | 'priority'
+export interface VerifyStatus {
+  [id: string]: 'none' | 'requested' | 'received';
 }
 
-/** One year's slice of the cost forecast. */
-export interface ForecastYear {
-  year: number
-  cbamFactor: number
-  status: 'accruing' | 'first-payment' | 'scaling'
-  /** Cost if forced onto punitive default values. */
-  defaultCost: number
-  /** Cost using verified/actual supplier intensity. */
-  verifiedCost: number
-  /** defaultCost − verifiedCost: the avoidable overpayment. */
-  avoidable: number
+export interface AppState {
+  mode: ViewMode;
+  material: MaterialLens;
+  view: AppView;
+  verifyStatus: VerifyStatus;
+  divergenceThreshold: number; // Slider 5%-40% (default 20%)
+  sliderOverrides: { [supplierId: string]: number }; // Simulator sliders
 }
